@@ -27,7 +27,8 @@ import {
   History,
   Target,
   Sparkles,
-  Upload
+  Upload,
+  Calendar
 } from 'lucide-react';
 import { TeamLeader, ProductionEntry } from '../types';
 import { editLeaderImage } from '../services/geminiService';
@@ -69,7 +70,22 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
     reason: string;
     returnDate: string;
     type: 'on_leave' | 'stopped';
-  }>({ reason: '', returnDate: '', type: 'on_leave' });
+  }>({ reason: 'Annual Leave', returnDate: '', type: 'on_leave' });
+
+  // Auto-reactivation logic
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    leaders.forEach(leader => {
+      if (leader.status !== 'active' && leader.returnDate && leader.returnDate <= today) {
+        onUpdate({ 
+          ...leader, 
+          status: 'active', 
+          stoppageReason: '', 
+          returnDate: '' 
+        });
+      }
+    });
+  }, [leaders, onUpdate]);
 
   const leaderMetrics = useMemo(() => {
     return leaders.map(l => {
@@ -156,6 +172,20 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
     }
   };
 
+  const handleStoppageSubmit = () => {
+    const leaderToSuspend = leaders.find(l => l.id === isReportingStoppage);
+    if (leaderToSuspend) {
+      onUpdate({
+        ...leaderToSuspend,
+        status: stoppageForm.type,
+        stoppageReason: stoppageForm.reason,
+        returnDate: stoppageForm.returnDate
+      });
+      setIsReportingStoppage(null);
+      setStoppageForm({ reason: 'Annual Leave', returnDate: '', type: 'on_leave' });
+    }
+  };
+
   const handleManualImageUpload = (e: React.ChangeEvent<HTMLInputElement>, target: 'edit' | 'add') => {
     const file = e.target.files?.[0];
     if (file) {
@@ -211,6 +241,18 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
       setPerformanceSortOrder('desc');
     }
   };
+
+  const stoppageReasons = [
+    "Annual Leave",
+    "Sick Leave",
+    "Parental Leave",
+    "Unpaid Leave",
+    "Administrative Suspension",
+    "Disciplinary Action",
+    "Training/Conference",
+    "Medical Emergency",
+    "Other"
+  ];
 
   return (
     <div className="space-y-12 pb-20 animate-in fade-in duration-700 font-['Inter']">
@@ -419,6 +461,70 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Stoppage Modal */}
+      {isReportingStoppage && (
+        <div className="fixed inset-0 z-[160] flex items-center justify-center p-8">
+           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xl" onClick={() => setIsReportingStoppage(null)}></div>
+           <div className="bg-white w-full max-w-lg rounded-[4rem] border border-slate-100 p-12 relative z-10 animate-in zoom-in-95 shadow-2xl">
+              <div className="flex justify-between items-center mb-10">
+                 <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Suspend Operations</h2>
+                 <button onClick={() => setIsReportingStoppage(null)} className="p-4 bg-slate-100 text-slate-400 rounded-3xl hover:text-red-500 transition-all"><X size={24} /></button>
+              </div>
+              <div className="space-y-6">
+                 <div className="space-y-2">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-4">Suspension Type</label>
+                    <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
+                      <button 
+                        onClick={() => setStoppageForm({...stoppageForm, type: 'on_leave'})}
+                        className={`flex-1 py-3 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all ${stoppageForm.type === 'on_leave' ? 'bg-white text-orange-600 shadow-md' : 'text-slate-400'}`}
+                      >
+                        Leave
+                      </button>
+                      <button 
+                        onClick={() => setStoppageForm({...stoppageForm, type: 'stopped'})}
+                        className={`flex-1 py-3 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all ${stoppageForm.type === 'stopped' ? 'bg-white text-rose-600 shadow-md' : 'text-slate-400'}`}
+                      >
+                        Suspended
+                      </button>
+                    </div>
+                 </div>
+                 
+                 <div className="space-y-2">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-4">Reason for Stoppage</label>
+                    <select 
+                      className="w-full bg-slate-50 border border-slate-200 px-6 py-5 rounded-[1.5rem] outline-none font-bold appearance-none cursor-pointer focus:border-orange-500"
+                      value={stoppageForm.reason}
+                      onChange={(e) => setStoppageForm({...stoppageForm, reason: e.target.value})}
+                    >
+                      {stoppageReasons.map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                 </div>
+
+                 <div className="space-y-2">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-4">Expected Return Date</label>
+                    <div className="relative">
+                      <Calendar size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
+                      <input 
+                        type="date"
+                        className="w-full bg-slate-50 border border-slate-200 pl-16 pr-6 py-5 rounded-[1.5rem] outline-none font-black text-slate-900 focus:border-orange-600"
+                        value={stoppageForm.returnDate}
+                        onChange={(e) => setStoppageForm({...stoppageForm, returnDate: e.target.value})}
+                      />
+                    </div>
+                    <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest pl-4 mt-2">Leader will automatically reactivate after this date.</p>
+                 </div>
+
+                 <button 
+                   onClick={handleStoppageSubmit} 
+                   className={`w-full py-6 rounded-[2rem] font-black uppercase tracking-widest shadow-2xl transition-all mt-4 ${stoppageForm.type === 'stopped' ? 'bg-rose-600 hover:bg-slate-900' : 'bg-orange-500 hover:bg-slate-900'} text-white`}
+                 >
+                   Confirm Stoppage
+                 </button>
+              </div>
+           </div>
         </div>
       )}
 
